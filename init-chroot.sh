@@ -3,7 +3,7 @@
 export ARCH="amd64"
 export MIRROR="http://gentoo.osuosl.org"
 
-GENTOO_BUILD="20140410"
+GENTOO_BUILD="20140501"
 
 
 download_stage3() {
@@ -15,35 +15,30 @@ download_stage3() {
     STAGE3_URL="${BUILD_URL}/${STAGE3}"
     STAGE3_CHECKSUM_URL="${BUILD_URL}/${STAGE3_CHECKSUM}"
 
-    cd stage3
-
     echo "------"
-    echo "DOWNLOADING STAGE3"
+    echo "Downloading stage3 for Gentoo build version ${GENTOO_BUILD}"
 
+    [[ -d $PKGBUILD_STAGE3_DIR ]] || mkdir $PKGBUILD_STAGE3_DIR
 
-    if [[ -f $STAGE3 ]]; then
-        echo "STAGE3 ${STAGE3} ALREADY DOWNLOADED"
+    if [[ -f "${PKGBUILD_STAGE3_DIR}/$STAGE3" ]]; then
+        echo "Stage3 ${STAGE3} already downloaded."
     else
-        wget $STAGE3_URL
-        wget $STAGE3_CHECKSUM_URL
+        wget $STAGE3_URL -O "${PKGBUILD_STAGE3_DIR}/${STAGE3}"
+        wget $STAGE3_CHECKSUM_URL -O "${PKGBUILD_STAGE3_DIR}/${STAGE3_CHECKSUM}"
     fi
 
-    echo "EXPECTED DIGESTS"
-    sha512sum stage3-$ARCH-$GENTOO_BUILD.tar.bz2
-    echo "ACTUAL DIGESTS"
-    sed -ne '2p' stage3-$ARCH-$GENTOO_BUILD.tar.bz2.DIGESTS
+    echo -n "Actual digest of stage3:"
+    sed -ne '2p' "${PKGBUILD_STAGE3_DIR}/stage3-$ARCH-$GENTOO_BUILD.tar.bz2.DIGESTS"
+    echo -n "Expected digest of stage3:"
+    sha512sum "${PKGBUILD_STAGE3_DIR}/stage3-$ARCH-$GENTOO_BUILD.tar.bz2"
 
-    echo -n "DIFF: "
-    diff <(sha512sum stage3-$ARCH-$GENTOO_BUILD.tar.bz2) <(sed -ne '2p' stage3-$ARCH-$GENTOO_BUILD.tar.bz2.DIGESTS)
+    diff <(sha512sum "${PKGBUILD_STAGE3_DIR}/$STAGE3" | awk '{print $1}') <(sed -ne '2p' "${PKGBUILD_STAGE3_DIR}/$STAGE3_CHECKSUM" | awk '{print $1}')
     if [ $? -eq 0 ]; then
-        echo "OK"
+        echo "Actual digest matches expected digests."
     else
-        echo "NOT OK"
-        echo "WORLD ON FIRE, RECTIFY THIS SITUATION AND RUN AGAIN."
+        echo "WARNING: stage3 digest does not match expectation. Cannot continue"
         exit 1
     fi
-
-    cd ..
 }
 
 download_portage_tree() {
@@ -52,59 +47,42 @@ download_portage_tree() {
     PORTAGE="portage-latest.tar.bz2"
     PORTAGE_URL="${MIRROR}/snapshots/${PORTAGE}"
 
-    cd portage
-
     echo "------"
-    echo "DOWNLOADING PORTAGE TREE"
+    echo "Downloading Gentoo portage tree"
 
+    [[ -d $PKGBUILD_PORTAGE_DIR ]] || mkdir $PKGBUILD_PORTAGE_DIR
 
-    if [[ -f $PORTAGE ]]; then
-        echo "PORTAGE TREE ${PORTAGE} ALREADY DOWNLOADED"
-    else
-        wget $PORTAGE_URL
+    if [[ -f "${PKGBUILD_PORTAGE_DIR}/${PORTAGE}" ]]; then
+        echo "Portage tree ${PORTAGE} already downloaded."
+        return
     fi
 
-    cd ..
+    wget $PORTAGE_URL -O "${PKGBUILD_PORTAGE_DIR}/$PORTAGE"
 }
 
 unpack_chroot() {
     echo "------"
-    echo "POPULATING CHROOT ${builddir}"
-    mkdir -p $builddir
-    cd $builddir
+    echo "Populating chroot ${PKGBUILD_ENV_DIR}"
 
-    if [[ -d usr ]]; then
-        echo "STAGE3 ALREADY UNPACKED"
+    [[ -d $PKGBUILD_ENV_DIR ]] || mkdir -p $PKGBUILD_ENV_DIR
+
+    if [[ -d "${PKGBUILD_ENV_DIR}/usr" ]]; then
+        echo "Stage3 already unpacked."
     else
-        echo "UNPACKING STAGE3"
-        tar -xjf ../../stage3/$STAGE3
+        echo "Unpacking stage3."
+        tar -xjf $PKGBUILD_STAGE3_DIR/$STAGE3 -C $PKGBUILD_ENV_DIR
     fi
 
-    if [[ -d usr/portage ]]; then
-        echo "PORTAGE ALREADY UNPACKED"
+    if [[ -d "${PKGBUILD_ENV_DIR}/usr/portage" ]]; then
+        echo "Portage already unpacked."
     else
-        echo "UNPACKING PORTAGE"
-        tar -xjf ../../portage/$PORTAGE -C usr
+        echo "Unpacking portage."
+        tar -xjf $PKGBUILD_PORTAGE_DIR/$PORTAGE -C "${PKGBUILD_ENV_DIR}/usr"
     fi
-    cd $basedir
-}
-
-setup_mounts() {
-    cd $builddir
-
-    echo "------"
-    echo "SETTING UP CHROOT MOUNTS"
-    mount -o bind /dev ./dev
-    mount -t devpts none ./dev/pts
-    mount -t tmpfs none ./dev/shm
-    mount -t proc none ./proc
-    mount -t sysfs none ./sys
-
-    cd $basedir
 }
 
 copy_bootstrapper() {
-    cp bootstrap-sabayon.sh $builddir
+    cp bootstrap-sabayon.sh $PKGBUILD_ENV_DIR
 }
 
 prepare_environment() {
@@ -114,13 +92,8 @@ prepare_environment() {
     CHROOT_DIR=${CHROOT_DIR:-$BASEDIR/chroots}
 }
 
-chroot_name=$1
-shift
-
-basedir=$(dirname $0)
-builddir="${basedir}/chroots/${chroot_name}"
+source ./pkgbuild-settings.sh || exit 1
 
 download_stage3
 download_portage_tree
 unpack_chroot
-setup_mounts
