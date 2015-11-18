@@ -11,7 +11,12 @@ setup_lang() {
 
 setup_system() {
     ln -sf ../usr/share/zoneinfo/America/Los_Angeles /etc/localtime
-echo "nameserver 8.8.8.8 \r nameserver 8.8.4.4 \r nameserver 2001:4860:4860::8888 \r nameserver 2001:4860:4860::8844 " > /etc/resolv.conf  
+    cat >>/etc/resolv.conf <<EOF
+nameserver 8.8.8.8 
+nameserver 8.8.4.4 
+nameserver 2001:4860:4860::8888 
+nameserver 2001:4860:4860::8844
+EOF
 
     # sets python 2.7 as default
     eselect python set 1
